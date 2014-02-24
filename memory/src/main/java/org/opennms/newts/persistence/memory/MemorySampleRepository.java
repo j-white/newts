@@ -8,8 +8,9 @@ import java.util.Map.Entry;
 
 import org.opennms.newts.api.Duration;
 import org.opennms.newts.api.Measurement;
-import org.opennms.newts.api.MeasurementRepository;
 import org.opennms.newts.api.Results;
+import org.opennms.newts.api.Sample;
+import org.opennms.newts.api.SampleRepository;
 import org.opennms.newts.api.Timestamp;
 import org.opennms.newts.api.query.ResultDescriptor;
 
@@ -17,26 +18,26 @@ import com.google.common.base.Optional;
 import com.google.common.collect.HashMultimap;
 
 
-public class MemoryMeasurementRepository implements MeasurementRepository {
+public class MemorySampleRepository implements SampleRepository {
 
-    private Map<String, HashMultimap<Timestamp, Measurement>> m_storage = new HashMap<String, HashMultimap<Timestamp, Measurement>>();
+    private Map<String, HashMultimap<Timestamp, Sample>> m_storage = new HashMap<String, HashMultimap<Timestamp, Sample>>();
 
     @Override
-    public Results select(String resource, Optional<Timestamp> start, Optional<Timestamp> end, ResultDescriptor descriptor, Duration resolution) {
+    public Results<Measurement> select(String resource, Optional<Timestamp> start, Optional<Timestamp> end, ResultDescriptor descriptor, Duration resolution) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Results select(String resource, Optional<Timestamp> start, Optional<Timestamp> end) {
+    public Results<Sample> select(String resource, Optional<Timestamp> start, Optional<Timestamp> end) {
 
         Timestamp upper = end.isPresent() ? end.get() : Timestamp.now();
         Timestamp lower = start.isPresent() ? start.get() : upper.minus(Duration.seconds(86400));
 
-        Results r = new Results();
+        Results<Sample> r = new Results<Sample>();
 
-        for (Entry<Timestamp, Measurement> entry : m_storage.get(resource).entries()) {
+        for (Entry<Timestamp, Sample> entry : m_storage.get(resource).entries()) {
             if (entry.getKey().gte(lower) && entry.getKey().lte(upper)) {
-                r.addMeasurement(entry.getValue());
+                r.addElement(entry.getValue());
             }
         }
 
@@ -44,11 +45,11 @@ public class MemoryMeasurementRepository implements MeasurementRepository {
     }
 
     @Override
-    public void insert(Collection<Measurement> measurements) {
+    public void insert(Collection<Sample> samples) {
 
-        for (Measurement m : measurements) {
+        for (Sample m : samples) {
             if (!(m_storage.containsKey(m.getResource()))) {
-                m_storage.put(m.getResource(), HashMultimap.<Timestamp, Measurement> create());
+                m_storage.put(m.getResource(), HashMultimap.<Timestamp, Sample> create());
             }
 
             m_storage.get(m.getResource()).put(m.getTimestamp(), m);

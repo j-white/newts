@@ -1,12 +1,14 @@
 package org.opennms.newts.persistence.cassandra;
 
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.opennms.newts.api.MetricType.GAUGE;
 
 import java.util.Iterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
-import org.opennms.newts.api.Measurement;
+import org.opennms.newts.api.Sample;
 import org.opennms.newts.api.Results.Row;
 import org.opennms.newts.api.ValueType;
 
@@ -18,15 +20,15 @@ import com.google.common.collect.Maps;
  * 
  * @author eevans
  */
-public class Rate implements Iterator<Row>, Iterable<Row> {
+public class Rate implements Iterator<Row<Sample>>, Iterable<Row<Sample>> {
 
-    private final Iterator<Row> m_input;
+    private final Iterator<Row<Sample>> m_input;
     private final String[] m_metrics;
-    private final Map<String, Measurement> m_prevMeasurements = Maps.newHashMap();
+    private final Map<String, Sample> m_prevSamples = Maps.newHashMap();
 
-    public Rate(Iterator<Row> input, String[] metrics) {
-        m_input = input;
-        m_metrics = metrics;
+    public Rate(Iterator<Row<Sample>> input, String[] metrics) {
+        m_input = checkNotNull(input, "input argument");
+        m_metrics = checkNotNull(metrics, "metrics argument");
     }
 
     @Override
@@ -35,33 +37,35 @@ public class Rate implements Iterator<Row>, Iterable<Row> {
     }
 
     @Override
-    public Row next() {
+    public Row<Sample> next() {
 
-        Row working = m_input.next();
-        Row result = new Row(working.getTimestamp(), working.getResource());
+        if (!hasNext()) throw new NoSuchElementException();
+
+        Row<Sample> working = m_input.next();
+        Row<Sample> result = new Row<>(working.getTimestamp(), working.getResource());
 
         for (String metricName : m_metrics) {
-            Measurement measurement = working.getMeasurement(metricName);
+            Sample sample = working.getElement(metricName);
 
-            if (measurement != null) {
-                result.addMeasurement(getRate(measurement));
-                m_prevMeasurements.put(measurement.getName(), measurement);
+            if (sample != null) {
+                result.addElement(getRate(sample));
+                m_prevSamples.put(sample.getName(), sample);
             }
         }
 
         return result;
     }
 
-    private Measurement getRate(Measurement measurement) {
+    private Sample getRate(Sample sample) {
         ValueType<?> value = null;
-        Measurement previous = m_prevMeasurements.get(measurement.getName());
+        Sample previous = m_prevSamples.get(sample.getName());
 
         if (previous != null) {
-            long elapsed = measurement.getTimestamp().asSeconds() - previous.getTimestamp().asSeconds();
-            value = measurement.getValue().delta(previous.getValue()).divideBy(elapsed);
+            long elapsed = sample.getTimestamp().asSeconds() - previous.getTimestamp().asSeconds();
+            value = sample.getValue().delta(previous.getValue()).divideBy(elapsed);
         }
 
-        return new Measurement(measurement.getTimestamp(), measurement.getResource(), measurement.getName(), GAUGE, value);
+        return new Sample(sample.getTimestamp(), sample.getResource(), sample.getName(), GAUGE, value);
     }
 
     @Override
@@ -70,7 +74,7 @@ public class Rate implements Iterator<Row>, Iterable<Row> {
     }
 
     @Override
-    public Iterator<Row> iterator() {
+    public Iterator<Row<Sample>> iterator() {
         return this;
     }
 

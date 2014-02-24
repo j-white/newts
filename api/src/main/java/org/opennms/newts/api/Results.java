@@ -8,24 +8,24 @@ import java.util.Map;
 import com.google.common.collect.Maps;
 
 
-public class Results implements Iterable<Results.Row> {
+public class Results<T extends Element<?>> implements Iterable<Results.Row<T>> {
 
-    public static class Row implements Iterable<Measurement> {
+    public static class Row<T extends Element<?>> implements Iterable<T> {
 
         private Timestamp m_timestamp;
         private String m_resource;
-        private Map<String, Measurement> m_cells = Maps.newHashMap();
+        private Map<String, T> m_cells = Maps.newHashMap();
 
         public Row(Timestamp timestamp, String resource) {
             m_timestamp = timestamp;
             m_resource = resource;
         }
 
-        public void addMeasurement(Measurement measurement) {
-            m_cells.put(measurement.getName(), measurement);
+        public void addElement(T sample) {
+            m_cells.put(sample.getName(), sample);
         }
 
-        public Measurement getMeasurement(String name) {
+        public T getElement(String name) {
             return m_cells.get(name);
         }
 
@@ -37,42 +37,47 @@ public class Results implements Iterable<Results.Row> {
             return m_resource;
         }
 
-        public Collection<Measurement> getMeasurements() {
+        public Collection<T> getElements() {
             return m_cells.values();
         }
 
         @Override
-        public Iterator<Measurement> iterator() {
-            return getMeasurements().iterator();
+        public Iterator<T> iterator() {
+            return getElements().iterator();
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%s[timestamp=%s, resource=%s", getClass().getSimpleName(), getTimestamp(), getResource());
         }
 
     }
 
-    Map<Timestamp, Row> m_rows = Maps.newTreeMap();
+    Map<Timestamp, Row<T>> m_rows = Maps.newTreeMap();
 
-    public void addMeasurement(Measurement measurement) {
+    public void addElement(T sample) {
 
-        Row row = m_rows.get(measurement.getTimestamp());
+        Row<T> row = m_rows.get(sample.getTimestamp());
 
         if (row == null) {
-            row = new Row(measurement.getTimestamp(), measurement.getResource());
+            row = new Row<T>(sample.getTimestamp(), sample.getResource());
             addRow(row);
         }
 
-        row.addMeasurement(measurement);
+        row.addElement(sample);
 
     }
 
-    public void addRow(Row row) {
+    public void addRow(Row<T> row) {
         m_rows.put(row.getTimestamp(), row);
     }
 
-    public Collection<Row> getRows() {
+    public Collection<Row<T>> getRows() {
         return m_rows.values();
     }
 
     @Override
-    public Iterator<Row> iterator() {
+    public Iterator<Row<T>> iterator() {
         return getRows().iterator();
     }
 

@@ -13,8 +13,9 @@ import javax.inject.Named;
 
 import org.opennms.newts.api.Duration;
 import org.opennms.newts.api.Measurement;
-import org.opennms.newts.api.MeasurementRepository;
 import org.opennms.newts.api.Results;
+import org.opennms.newts.api.Sample;
+import org.opennms.newts.api.SampleRepository;
 import org.opennms.newts.api.Timestamp;
 import org.opennms.newts.api.ValueType;
 import org.opennms.newts.api.query.ResultDescriptor;
@@ -30,13 +31,13 @@ import com.google.common.base.Optional;
 import com.google.inject.Inject;
 
 
-public class CassandraMeasurementRepository implements MeasurementRepository {
+public class CassandraSampleRepository implements SampleRepository {
 
     private Session m_session;
     @SuppressWarnings("unused") private MetricRegistry m_registry;
 
     @Inject
-    public CassandraMeasurementRepository(@Named("cassandraKeyspace") String keyspace, @Named("cassandraHost") String host, @Named("cassandraPort") int port, MetricRegistry registry) {
+    public CassandraSampleRepository(@Named("cassandraKeyspace") String keyspace, @Named("cassandraHost") String host, @Named("cassandraPort") int port, MetricRegistry registry) {
 
         Cluster cluster = Cluster.builder().withPort(port).addContactPoint(host).build();
         m_session = cluster.connect(keyspace);
@@ -46,12 +47,12 @@ public class CassandraMeasurementRepository implements MeasurementRepository {
     }
 
     @Override
-    public Results select(String resource, Optional<Timestamp> start, Optional<Timestamp> end, ResultDescriptor descriptor, Duration resolution) {
+    public Results<Measurement> select(String resource, Optional<Timestamp> start, Optional<Timestamp> end, ResultDescriptor descriptor, Duration resolution) {
 
         Timestamp upper = end.isPresent() ? end.get() : Timestamp.now();
         @SuppressWarnings("unused") Timestamp lower = start.isPresent() ? start.get() : upper.minus(Duration.seconds(86400));
 
-        Results measurements = new Results();
+        Results<Measurement> measurements = new Results<Measurement>();
 
         // TODO: do.
 
@@ -59,28 +60,28 @@ public class CassandraMeasurementRepository implements MeasurementRepository {
     }
 
     @Override
-    public Results select(String resource, Optional<Timestamp> start, Optional<Timestamp> end) {
+    public Results<Sample> select(String resource, Optional<Timestamp> start, Optional<Timestamp> end) {
 
         Timestamp upper = end.isPresent() ? end.get() : Timestamp.now();
         Timestamp lower = start.isPresent() ? start.get() : upper.minus(Duration.seconds(86400));
 
-        Results measurements = new Results();
+        Results<Sample> samples = new Results<Sample>();
 
-        for (Results.Row row : new DriverAdapter(cassandraSelect(resource, lower, upper))) {
-            measurements.addRow(row);
+        for (Results.Row<Sample> row : new DriverAdapter(cassandraSelect(resource, lower, upper))) {
+            samples.addRow(row);
         }
 
-        return measurements;
+        return samples;
     }
 
     @Override
-    public void insert(Collection<Measurement> measurements) {
+    public void insert(Collection<Sample> samples) {
 
         Batch batch = batch();
 
-        for (Measurement m : measurements) {
+        for (Sample m : samples) {
             batch.add(
-                    insertInto(SchemaConstants.T_MEASUREMENTS)
+                    insertInto(SchemaConstants.T_SAMPLES)
                         .value(SchemaConstants.F_RESOURCE, m.getResource())
                         .value(SchemaConstants.F_COLLECTED, m.getTimestamp().asMillis())
                         .value(SchemaConstants.F_METRIC_NAME, m.getName())
@@ -97,7 +98,7 @@ public class CassandraMeasurementRepository implements MeasurementRepository {
     // FIXME: Use a prepared statement for this.
     private ResultSet cassandraSelect(String resource, Timestamp start, Timestamp end) {
 
-        Select select = QueryBuilder.select().from(SchemaConstants.T_MEASUREMENTS);
+        Select select = QueryBuilder.select().from(SchemaConstants.T_SAMPLES);
         select.where(eq(SchemaConstants.F_RESOURCE, resource));
 
         select.where(gte(SchemaConstants.F_COLLECTED, start.asDate()));
