@@ -17,6 +17,9 @@ package org.opennms.newts.rest;
 
 
 import java.util.Collections;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.jetty.servlets.CrossOriginFilter;
 import org.opennms.newts.api.SampleProcessor;
@@ -75,8 +78,11 @@ public class NewtsService extends Service<NewtsConfig> {
             repository = new CassandraSampleRepository(keyspace, host, port, metricRegistry);
         }
 
-        environment.addResource(new MeasurementsResource(repository, configuration.getReports()));
+        Map<String, ResultDescriptorDTO> reports = toConcurrentMap(configuration.getReports());
+
+        environment.addResource(new MeasurementsResource(repository, reports));
         environment.addResource(new SamplesResource(repository));
+        environment.addResource(new ResultDescriptorsResource(reports));
 
         environment.addHealthCheck(new RepositoryHealthCheck(repository));
 
@@ -84,4 +90,11 @@ public class NewtsService extends Service<NewtsConfig> {
 
     }
 
+    private Map<String, ResultDescriptorDTO> toConcurrentMap(Map<String, ResultDescriptorDTO> map) {
+        Map<String, ResultDescriptorDTO> concurrentMap = new ConcurrentHashMap<String, ResultDescriptorDTO>();
+        for (Entry<String, ResultDescriptorDTO> entry : map.entrySet()) {
+            concurrentMap.put(entry.getKey(), entry.getValue());
+        }
+        return concurrentMap;
+    }
 }
