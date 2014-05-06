@@ -27,13 +27,16 @@ import org.opennms.newts.api.SampleProcessorService;
 import org.opennms.newts.api.SampleRepository;
 import org.opennms.newts.api.indexing.ResourceIndex;
 import org.opennms.newts.indexing.cassandra.CassandraResourceIndex;
+import org.opennms.newts.indexing.cassandra.GuavaCachingIndexState;
 import org.opennms.newts.indexing.cassandra.ResourceIndexingSampleProcessor;
 import org.opennms.newts.persistence.cassandra.CassandraSampleRepository;
 
+import com.codahale.metrics.JmxReporter;
 import com.codahale.metrics.MetricRegistry;
 import com.yammer.dropwizard.Service;
 import com.yammer.dropwizard.config.Bootstrap;
 import com.yammer.dropwizard.config.Environment;
+import com.yammer.dropwizard.lifecycle.Managed;
 
 
 public class NewtsService extends Service<NewtsConfig> {
@@ -62,11 +65,14 @@ public class NewtsService extends Service<NewtsConfig> {
 
         IndexingConfig indexingConf = configuration.getIndexingConfig();
 
+        // Create a SampleRepository (conditionally w/ resource indexing)
         if (indexingConf.isEnabled()) {
             ResourceIndex resourceIndex = new CassandraResourceIndex(
                     indexingConf.getCassandraKeyspace(),
                     indexingConf.getCassandraHost(),
                     indexingConf.getCassandraPort(),
+                    indexingConf.getCassandraColumnTTL(),
+                    new GuavaCachingIndexState(indexingConf.getMaxCacheEntries(), metricRegistry),
                     metricRegistry);
             SampleProcessorService processorService = new SampleProcessorService(
                     indexingConf.getMaxThreads(),
@@ -78,14 +84,32 @@ public class NewtsService extends Service<NewtsConfig> {
             repository = new CassandraSampleRepository(keyspace, host, port, metricRegistry);
         }
 
-        Map<String, ResultDescriptorDTO> reports = toConcurrentMap(configuration.getReports());
+        // Create/start a JMX reporter for our MetricRegistry
+        final JmxReporter reporter = JmxReporter.forRegistry(metricRegistry).inDomain("newts").build();
 
+        environment.manage(new Managed() {
+
+            @Override
+            public void stop() throws Exception {
+                reporter.stop();
+            }
+
+            @Override
+            public void start() throws Exception {
+                reporter.start();
+            }
+        });
+
+        // Add rest resources
+        Map<String, ResultDescriptorDTO> reports = toConcurrentMap(configuration.getReports());
         environment.addResource(new MeasurementsResource(repository, reports));
         environment.addResource(new SamplesResource(repository));
         environment.addResource(new ResultDescriptorsResource(reports));
 
+        // Health checks
         environment.addHealthCheck(new RepositoryHealthCheck(repository));
 
+        // Mapped exceptions
         environment.addProvider(IllegalArgumentExceptionMapper.class);
 
     }

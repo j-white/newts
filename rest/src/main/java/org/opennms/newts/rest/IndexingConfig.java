@@ -33,6 +33,11 @@ public class IndexingConfig {
     @JsonProperty("maxThreads")
     private int m_maxThreads = 64;
 
+    @Min(value = 10000)
+    @Max(value = Integer.MAX_VALUE)
+    @JsonProperty("maxCacheEntries")
+    private int m_maxCacheEntries = 1000000;
+
     @Valid
     @JsonProperty("cassandra")
     private CassandraConfig m_cassandraConfig = new CassandraConfig();
@@ -53,8 +58,16 @@ public class IndexingConfig {
         return m_cassandraConfig.getHost();
     }
 
+    public int getMaxCacheEntries() {
+        return m_maxCacheEntries;
+    }
+
     public int getCassandraPort() {
         return m_cassandraConfig.getPort();
+    }
+
+    public int getCassandraColumnTTL() {
+        return m_cassandraConfig.getColumnTTL();
     }
 
 }
